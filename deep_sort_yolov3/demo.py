@@ -67,14 +67,19 @@ def main(yolo):
 
         t1 = time.time()
 
+        #yolo预测
         image = Image.fromarray(frame[...,::-1])  # bgr to rgb
         boxs = yolo.detect_image(image)[0]
         confidence = yolo.detect_image(image)[1]
-        classlist = yolo.detect_image(image)[2]
+        # classlist = yolo.detect_image(image)[2]
+        classIndexList = yolo.detect_image(image)[3]
 
         features = encoder(frame,boxs)
 
-        detections = [Detection(bbox, confidence, feature) for bbox, confidence, feature in zip(boxs, confidence, features)]
+        detections = []
+
+        for bbox, confidence, feature, classIndex in zip(boxs, confidence, features, classIndexList):
+            detections.append(Detection(bbox, confidence, feature, classIndex))
         
         # Run non-maxima suppression.
         boxes = np.array([d.tlwh for d in detections])
@@ -91,7 +96,9 @@ def main(yolo):
                 continue 
             bbox = track.to_tlbr()
             cv2.rectangle(frame, (int(bbox[0]), int(bbox[1])), (int(bbox[2]), int(bbox[3])),(255,255,255), 2)
-            cv2.putText(frame, str(track.track_id),(int(bbox[0]), int(bbox[1])),0, 5e-3 * 200, (0,255,0),2)
+            # 显示索引从1开始
+            text=str(yolo.class_names[track.classIndex])+'_'+str(track.objectIndex+1)
+            cv2.putText(frame, text,(int(bbox[0]), int(bbox[1])),0, 5e-3 * 120, (0,0,0),2)
 
         for det in detections:
             bbox = det.to_tlbr()

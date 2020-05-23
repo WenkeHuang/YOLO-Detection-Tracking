@@ -20,7 +20,7 @@ from yolo3.utils import letterbox_image
 
 class YOLO(object):
     def __init__(self):
-        self.model_path = 'model_data/yolo.h5'
+        self.model_path = 'model_data/yolo3.h5'
         self.anchors_path = 'model_data/yolo_anchors.txt'
         self.classes_path = 'model_data/coco_classes.txt'
         self.score = 0.5
@@ -97,8 +97,10 @@ class YOLO(object):
         return_boxs = []
         return_scores = []
         return_class = []
+        return_classIndex = []
         for i, c in reversed(list(enumerate(out_classes))):
             predicted_class = self.class_names[c]
+            return_classIndex.append(c)
             return_class.append(predicted_class)
             # if predicted_class != 'person' :
             #     continue
@@ -117,7 +119,7 @@ class YOLO(object):
             return_boxs.append([x,y,w,h])
             return_scores.append(score)
 
-        return return_boxs, return_scores,return_class 
+        return return_boxs, return_scores,return_class, return_classIndex
 
     def close_session(self):
         self.sess.close()

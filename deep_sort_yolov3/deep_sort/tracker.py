@@ -37,7 +37,7 @@ class Tracker:
 
     """
 
-    def __init__(self, metric, max_iou_distance=0.7, max_age=30, n_init=3):
+    def __init__(self, metric, max_iou_distance=0.7, max_age=30, n_init=3, classNum=80):
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
@@ -46,6 +46,11 @@ class Tracker:
         self.kf = kalman_filter.KalmanFilter()
         self.tracks = []
         self._next_id = 1
+
+        # 储存所有物体 1代表现在存在 0 代表现在不存在
+        self.objectList=[]
+        for i in range(0,classNum):
+            self.objectList.append([])
 
     def predict(self):
         """Propagate track state distributions one time step forward.
@@ -65,8 +70,8 @@ class Tracker:
 
         """
         # Run matching cascade.
-        matches, unmatched_tracks, unmatched_detections = \
-            self._match(detections)
+        # 获取对应ID
+        matches, unmatched_tracks, unmatched_detections = self._match(detections)
 
         # Update track set.
         for track_idx, detection_idx in matches:
@@ -76,7 +81,15 @@ class Tracker:
             self.tracks[track_idx].mark_missed()
         for detection_idx in unmatched_detections:
             self._initiate_track(detections[detection_idx])
-        self.tracks = [t for t in self.tracks if not t.is_deleted()]
+
+        temp=[]
+        for t in self.tracks:
+            if not t.is_deleted():
+                temp.append(t)
+            else:
+                self.objectList[t.classIndex][t.objectIndex]=0
+
+        self.tracks = temp
 
         # Update distance metric.
         active_targets = [t.track_id for t in self.tracks if t.is_confirmed()]
@@ -133,6 +146,7 @@ class Tracker:
     def _initiate_track(self, detection):
         mean, covariance = self.kf.initiate(detection.to_xyah())
         self.tracks.append(Track(
-            mean, covariance, self._next_id, self.n_init, self.max_age,
-            detection.feature))
+            mean, covariance, self._next_id, self.n_init, self.max_age, detection.classIndex,
+            len(self.objectList[detection.classIndex]),detection.feature))
         self._next_id += 1
+        self.objectList[detection.classIndex].append(1)
