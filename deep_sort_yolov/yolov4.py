@@ -1,12 +1,12 @@
 import os
 import numpy as np
-import copy
+
 import colorsys
-from timeit import default_timer as timer
+
 from keras import backend as K
 from keras.models import load_model
 from keras.layers import Input
-from PIL import Image, ImageFont, ImageDraw
+
 from nets.yolo4 import yolo_body,yolo_eval
 from utils.utils import letterbox_image
 class YOLO(object):
@@ -14,11 +14,11 @@ class YOLO(object):
         "model_path": 'model_data/yolo4_weight.h5',
         "anchors_path": 'model_data/yolo_anchors.txt',
         "classes_path": 'model_data/coco_classes.txt',
-        "score" : 0.5,
-        "iou" : 0.3,
+        "score" : 0.5,  # 最低准确度
+        "iou" : 0.3,    # NMS的阈值
         # 显存比较小可以使用416x416
         # 显存比较大可以使用608x608
-        "model_image_size" : (1024, 576)
+        "model_image_size" : (1024, 576) # 1080p视频使用的转换大小
     }
 
     @classmethod
@@ -134,13 +134,17 @@ class YOLO(object):
             if c == 9:
                 continue
 
-
             box = out_boxes[i]
             score = out_scores[i]
 
-            # 设置评分阈值
-            if score<0.7:
+            # 在使用coco时 人的准确度要大于0.75  车的精确度要大于0.6
+            if c == 0 and score < 0.75:
+                # print(c,score)
                 continue
+            if c == 2 and score < 0.6:
+                # print(c, score)
+                continue
+
 
             top, left, bottom, right = box
             top = top - 5

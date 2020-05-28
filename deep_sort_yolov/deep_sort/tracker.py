@@ -37,7 +37,7 @@ class Tracker:
 
     """
 
-    def __init__(self, metric, max_iou_distance=0.7, max_age=30, n_init=3, classNum=80):
+    def __init__(self, metric, max_iou_distance=0.7, max_age=30, n_init=3, min_confirm=5, classNum=80):
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
@@ -46,11 +46,16 @@ class Tracker:
         self.kf = kalman_filter.KalmanFilter()
         self.tracks = []
         self._next_id = 1
+        self.min_confirm = min_confirm
 
-        # 储存所有物体 1代表现在存在 -1代表被删除 0为未确定
-        self.objectList=[]
-        for i in range(0,classNum):
-            self.objectList.append([])
+        self.classNum=classNum
+        # 储存所有track出现帧数 0为未确定
+        self.confirmed_time_list = []
+        # 储存被确定的track的id
+        self.confirmed_id_list = []
+        for i in range(0, classNum):
+            self.confirmed_time_list.append([])
+            self.confirmed_id_list.append([])
 
     def predict(self):
         """Propagate track state distributions one time step forward.
@@ -77,21 +82,22 @@ class Tracker:
         for track_idx, detection_idx in matches:
             self.tracks[track_idx].update(
                 self.kf, detections[detection_idx])
-            # if self.tracks[track_idx].objectIndex >= len(self.objectList[self.tracks[track_idx].classIndex]):
-            #     self.objectList[self.tracks[track_idx].classIndex].append(1)
-            self.objectList[self.tracks[track_idx].classIndex][self.tracks[track_idx].objectIndex]=1
+            # 更新出现次数
+            self.confirmed_time_list[self.tracks[track_idx].classIndex][self.tracks[track_idx].objectIndex] += 1
+            # 被确认的次数大于阈值则添加
+            if self.confirmed_time_list[self.tracks[track_idx].classIndex][self.tracks[track_idx].objectIndex] >= self.min_confirm:
+                if self.tracks[track_idx].track_id not in self.confirmed_id_list[self.tracks[track_idx].classIndex]:
+                    self.confirmed_id_list[self.tracks[track_idx].classIndex].append(self.tracks[track_idx].track_id)
 
         for track_idx in unmatched_tracks:
             self.tracks[track_idx].mark_missed()
         for detection_idx in unmatched_detections:
             self._initiate_track(detections[detection_idx])
 
-        temp=[]
+        temp = []
         for t in self.tracks:
             if not t.is_deleted():
                 temp.append(t)
-            else:
-                self.objectList[t.classIndex][t.objectIndex]=-1
 
         self.tracks = temp
 
@@ -120,37 +126,114 @@ class Tracker:
             return cost_matrix
 
         # Split track set into confirmed and unconfirmed tracks.
-        confirmed_tracks = [
-            i for i, t in enumerate(self.tracks) if t.is_confirmed()]
-        unconfirmed_tracks = [
-            i for i, t in enumerate(self.tracks) if not t.is_confirmed()]
 
-        # Associate confirmed tracks using appearance features.
-        matches_a, unmatched_tracks_a, unmatched_detections = \
-            linear_assignment.matching_cascade(
+
+        # 获取每一类的tracks和detections
+        temp_tracks=[]
+        temp_detections=[]
+        for classes in range(0, self.classNum):
+            temp_tracks.append([])
+            temp_detections.append([])
+        for i in range(0,len(self.tracks)):
+            temp_tracks[self.tracks[i].classIndex].append(self.tracks[i])
+        for i in range(0,len(detections)):
+            temp_detections[detections[i].classIndex].append(detections[i])
+
+        # 对于同类的tracks和detections查找对应关系
+        matches = []
+        unmatched_tracks=[]
+        unmatched_detections=[]
+        for class_index in range(0, self.classNum):
+            confirmed_tracks = [
+                i for i, t in enumerate(temp_tracks[class_index]) if t.is_confirmed()]
+            unconfirmed_tracks = [
+                i for i, t in enumerate(temp_tracks[class_index]) if not t.is_confirmed()]
+            # if len(unconfirmed_tracks)>0:
+            #     aa=self.tracks.index(temp_tracks[class_index][unconfirmed_tracks[0]])
+            #     print('aa',aa)
+            matches_a, unmatched_tracks_a, unmatched_detections_a = linear_assignment.matching_cascade(
                 gated_metric, self.metric.matching_threshold, self.max_age,
-                self.tracks, detections, confirmed_tracks)
+                temp_tracks[class_index], temp_detections[class_index], confirmed_tracks)
 
-        # Associate remaining tracks together with unconfirmed tracks using IOU.
-        iou_track_candidates = unconfirmed_tracks + [
-            k for k in unmatched_tracks_a if
-            self.tracks[k].time_since_update == 1]
-        unmatched_tracks_a = [
-            k for k in unmatched_tracks_a if
-            self.tracks[k].time_since_update != 1]
-        matches_b, unmatched_tracks_b, unmatched_detections = \
-            linear_assignment.min_cost_matching(
-                iou_matching.iou_cost, self.max_iou_distance, self.tracks,
-                detections, iou_track_candidates, unmatched_detections)
+            # Associate remaining tracks together with unconfirmed tracks using IOU.
+            iou_track_candidates = unconfirmed_tracks + [
+                k for k in unmatched_tracks_a if
+                temp_tracks[class_index][k].time_since_update == 1]
 
-        matches = matches_a + matches_b
-        unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b))
+            unmatched_tracks_a = [
+                k for k in unmatched_tracks_a if
+                temp_tracks[class_index][k].time_since_update != 1]
+
+            matches_b, unmatched_tracks_b, unmatched_detections_b = linear_assignment.min_cost_matching(
+                iou_matching.iou_cost, self.max_iou_distance, temp_tracks[class_index],
+                temp_detections[class_index], iou_track_candidates, unmatched_detections_a)
+
+            temp_matches = matches_a + matches_b
+            temp_unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b))
+            temp_unmatched_detections = list(set(unmatched_detections_a + unmatched_detections_b))
+            for track_idx, detection_idx in temp_matches:
+                original_track_idx = self.tracks.index(temp_tracks[class_index][track_idx])
+                original_detection_idx = detections.index(temp_detections[class_index][detection_idx])
+                matches.append(tuple([original_track_idx, original_detection_idx]))
+
+            for i in range(0,len(temp_unmatched_tracks)):
+                original_track_idx = self.tracks.index(temp_tracks[class_index][temp_unmatched_tracks[i]])
+                unmatched_tracks.append(original_track_idx)
+
+            for i in range(0,len(temp_unmatched_detections)):
+                original_detection_idx = detections.index(temp_detections[class_index][temp_unmatched_detections[i]])
+                unmatched_detections.append(original_detection_idx)
+
+        # confirmed_tracks = [
+        #     i for i, t in enumerate(self.tracks) if t.is_confirmed()]
+        # unconfirmed_tracks = [
+        #     i for i, t in enumerate(self.tracks) if not t.is_confirmed()]
+        #
+        # # Associate confirmed tracks using appearance features.
+        # matches_a, unmatched_tracks_a, unmatched_detections_a = linear_assignment.matching_cascade(
+        #         gated_metric, self.metric.matching_threshold, self.max_age,
+        #         self.tracks, detections, confirmed_tracks)
+        #
+        # # Associate remaining tracks together with unconfirmed tracks using IOU.
+        # iou_track_candidates = unconfirmed_tracks + [
+        #     k for k in unmatched_tracks_a if
+        #     self.tracks[k].time_since_update == 1]
+        # unmatched_tracks_a = [
+        #     k for k in unmatched_tracks_a if
+        #     self.tracks[k].time_since_update != 1]
+        # matches_b, unmatched_tracks_b, unmatched_detections_b = linear_assignment.min_cost_matching(
+        #         iou_matching.iou_cost, self.max_iou_distance, self.tracks,
+        #         detections, iou_track_candidates, unmatched_detections_a)
+        #
+        # temp_matches = matches_a + matches_b
+        # matches=[]
+        # unmatched_tracks_c=[]
+        # unmatched_detections_c=[]
+        #
+        # # 确保是同一类
+        # for track_idx, detection_idx in temp_matches:
+        #     if self.tracks[track_idx].classIndex == detections[detection_idx].classIndex:
+        #         matches.append(tuple([track_idx,detection_idx]))
+        #     else:
+        #         unmatched_tracks_c.append(track_idx)
+        #         unmatched_detections_c.append(detection_idx)
+        #         print('wrong with:',self.tracks[track_idx].classIndex,detections[detection_idx].classIndex)
+        #
+        # unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b+unmatched_tracks_c))
+        # unmatched_detections=list(set(unmatched_detections_a + unmatched_detections_b+unmatched_detections_c))
+
         return matches, unmatched_tracks, unmatched_detections
 
     def _initiate_track(self, detection):
         mean, covariance = self.kf.initiate(detection.to_xyah())
         self.tracks.append(Track(
-            mean, covariance, self._next_id, self.n_init, self.max_age, detection.classIndex,
-            len(self.objectList[detection.classIndex]),detection.feature))
+            mean=mean,
+            covariance=covariance,
+            track_id=self._next_id,
+            n_init=self.n_init,
+            max_age=self.max_age,
+            classIndex=detection.classIndex,
+            objectIndex=len(self.confirmed_time_list[detection.classIndex]),
+            feature=detection.feature))
         self._next_id += 1
-        self.objectList[detection.classIndex].append(0)
+        self.confirmed_time_list[detection.classIndex].append(0)
