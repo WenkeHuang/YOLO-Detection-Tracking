@@ -48,7 +48,7 @@ class Tracker:
         self._next_id = 1
         self.min_confirm = min_confirm
 
-        self.classNum=classNum
+        self.classNum = classNum
         # 储存所有track出现帧数 0为未确定
         self.confirmed_time_list = []
         # 储存被确定的track的id
@@ -85,7 +85,8 @@ class Tracker:
             # 更新出现次数
             self.confirmed_time_list[self.tracks[track_idx].classIndex][self.tracks[track_idx].objectIndex] += 1
             # 被确认的次数大于阈值则添加
-            if self.confirmed_time_list[self.tracks[track_idx].classIndex][self.tracks[track_idx].objectIndex] >= self.min_confirm:
+            if self.confirmed_time_list[self.tracks[track_idx].classIndex][
+                self.tracks[track_idx].objectIndex] >= self.min_confirm:
                 if self.tracks[track_idx].track_id not in self.confirmed_id_list[self.tracks[track_idx].classIndex]:
                     self.confirmed_id_list[self.tracks[track_idx].classIndex].append(self.tracks[track_idx].track_id)
 
@@ -127,22 +128,21 @@ class Tracker:
 
         # Split track set into confirmed and unconfirmed tracks.
 
-
         # 获取每一类的tracks和detections
-        temp_tracks=[]
-        temp_detections=[]
+        temp_tracks = []
+        temp_detections = []
         for classes in range(0, self.classNum):
             temp_tracks.append([])
             temp_detections.append([])
-        for i in range(0,len(self.tracks)):
+        for i in range(0, len(self.tracks)):
             temp_tracks[self.tracks[i].classIndex].append(self.tracks[i])
-        for i in range(0,len(detections)):
+        for i in range(0, len(detections)):
             temp_detections[detections[i].classIndex].append(detections[i])
 
         # 对于同类的tracks和detections查找对应关系
         matches = []
-        unmatched_tracks=[]
-        unmatched_detections=[]
+        unmatched_tracks = []
+        unmatched_detections = []
         for class_index in range(0, self.classNum):
             confirmed_tracks = [
                 i for i, t in enumerate(temp_tracks[class_index]) if t.is_confirmed()]
@@ -151,15 +151,18 @@ class Tracker:
             # if len(unconfirmed_tracks)>0:
             #     aa=self.tracks.index(temp_tracks[class_index][unconfirmed_tracks[0]])
             #     print('aa',aa)
+
+            # 对于已经确认的使用cos距离匹配
             matches_a, unmatched_tracks_a, unmatched_detections_a = linear_assignment.matching_cascade(
                 gated_metric, self.metric.matching_threshold, self.max_age,
                 temp_tracks[class_index], temp_detections[class_index], confirmed_tracks)
 
-            # Associate remaining tracks together with unconfirmed tracks using IOU.
+            # IOU.
             iou_track_candidates = unconfirmed_tracks + [
                 k for k in unmatched_tracks_a if
                 temp_tracks[class_index][k].time_since_update == 1]
 
+            # 未出现设为为匹配
             unmatched_tracks_a = [
                 k for k in unmatched_tracks_a if
                 temp_tracks[class_index][k].time_since_update != 1]
@@ -168,6 +171,7 @@ class Tracker:
                 iou_matching.iou_cost, self.max_iou_distance, temp_tracks[class_index],
                 temp_detections[class_index], iou_track_candidates, unmatched_detections_a)
 
+            # 合并
             temp_matches = matches_a + matches_b
             temp_unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b))
             temp_unmatched_detections = list(set(unmatched_detections_a + unmatched_detections_b))
@@ -176,11 +180,11 @@ class Tracker:
                 original_detection_idx = detections.index(temp_detections[class_index][detection_idx])
                 matches.append(tuple([original_track_idx, original_detection_idx]))
 
-            for i in range(0,len(temp_unmatched_tracks)):
+            for i in range(0, len(temp_unmatched_tracks)):
                 original_track_idx = self.tracks.index(temp_tracks[class_index][temp_unmatched_tracks[i]])
                 unmatched_tracks.append(original_track_idx)
 
-            for i in range(0,len(temp_unmatched_detections)):
+            for i in range(0, len(temp_unmatched_detections)):
                 original_detection_idx = detections.index(temp_detections[class_index][temp_unmatched_detections[i]])
                 unmatched_detections.append(original_detection_idx)
 
