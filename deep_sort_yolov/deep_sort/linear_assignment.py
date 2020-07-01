@@ -195,6 +195,7 @@ def gate_cost_matrix(
 
         # 加权计算
         cost_matrix[row]=cost_matrix[row]*cos_dis_rate+(1-cos_dis_rate)*gating_distance
+        # 计算后大于阈值设为无穷
+        cost_matrix[row, cost_matrix[row] > gating_threshold] = gated_cost
 
-        cost_matrix[row, gating_distance > gating_threshold] = gated_cost
     return cost_matrix

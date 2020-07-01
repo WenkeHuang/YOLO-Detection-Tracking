@@ -120,12 +120,12 @@ class Tracker:
         def gated_metric(tracks, dets, track_indices, detection_indices):
             features = np.array([dets[i].feature for i in detection_indices])
             targets = np.array([tracks[i].track_id for i in track_indices])
-            # 计算cos距离
-            cost_matrix1 = self.metric.distance(features, targets)
-            cost_matrix1[cost_matrix1 > self.metric.matching_threshold] = 10e+5
+            # 计算cos距离并将大于阈值的设为无穷
+            cos_cost_matrix = self.metric.distance(features, targets)
+            cos_cost_matrix[cos_cost_matrix > self.metric.matching_threshold] = 10e+5
             # 计算马氏距离并将大于阈值的设为无穷
             cost_matrix = linear_assignment.gate_cost_matrix(
-                self.kf, np.array(cost_matrix1), tracks, dets, track_indices,
+                self.kf, np.array(cos_cost_matrix), tracks, dets, track_indices,
                 detection_indices,cos_dis_rate=self.cos_dis_rate)
 
             return cost_matrix
