@@ -48,9 +48,12 @@ def _cosine_distance(a, b, data_is_normalized=False):
         contains the squared distance between `a[i]` and `b[j]`.
 
     """
+
+    # 归一化
     if not data_is_normalized:
         a = np.asarray(a) / np.linalg.norm(a, axis=1, keepdims=True)
         b = np.asarray(b) / np.linalg.norm(b, axis=1, keepdims=True)
+    # 计算所有cos距离
     return 1. - np.dot(a, b.T)
 
 
@@ -92,6 +95,7 @@ def _nn_cosine_distance(x, y):
         smallest cosine distance to a sample in `x`.
 
     """
+    # 取最小cos距离
     distances = _cosine_distance(x, y)
     return distances.min(axis=0)
 

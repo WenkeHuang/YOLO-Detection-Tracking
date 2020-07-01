@@ -37,7 +37,7 @@ class Tracker:
 
     """
 
-    def __init__(self, metric, max_iou_distance=0.7, max_age=30, n_init=3, min_confirm=5, classNum=80):
+    def __init__(self, metric, max_iou_distance=0.7, max_age=30, n_init=3, min_confirm=5, classNum=80, cos_dis_rate=0.9):
         self.metric = metric
         self.max_iou_distance = max_iou_distance
         self.max_age = max_age
@@ -47,6 +47,8 @@ class Tracker:
         self.tracks = []
         self._next_id = 1
         self.min_confirm = min_confirm
+
+        self.cos_dis_rate = cos_dis_rate
 
         self.classNum = classNum
         # 储存所有track出现帧数 0为未确定
@@ -111,18 +113,20 @@ class Tracker:
             features += track.features
             targets += [track.track_id for _ in track.features]
             track.features = []
-        self.metric.partial_fit(
-            np.asarray(features), np.asarray(targets), active_targets)
+        self.metric.partial_fit(np.asarray(features), np.asarray(targets), active_targets)
 
     def _match(self, detections):
 
         def gated_metric(tracks, dets, track_indices, detection_indices):
             features = np.array([dets[i].feature for i in detection_indices])
             targets = np.array([tracks[i].track_id for i in track_indices])
-            cost_matrix = self.metric.distance(features, targets)
+            # 计算cos距离
+            cost_matrix1 = self.metric.distance(features, targets)
+            cost_matrix1[cost_matrix1 > self.metric.matching_threshold] = 10e+5
+            # 计算马氏距离并将大于阈值的设为无穷
             cost_matrix = linear_assignment.gate_cost_matrix(
-                self.kf, cost_matrix, tracks, dets, track_indices,
-                detection_indices)
+                self.kf, np.array(cost_matrix1), tracks, dets, track_indices,
+                detection_indices,cos_dis_rate=self.cos_dis_rate)
 
             return cost_matrix
 
@@ -148,9 +152,7 @@ class Tracker:
                 i for i, t in enumerate(temp_tracks[class_index]) if t.is_confirmed()]
             unconfirmed_tracks = [
                 i for i, t in enumerate(temp_tracks[class_index]) if not t.is_confirmed()]
-            # if len(unconfirmed_tracks)>0:
-            #     aa=self.tracks.index(temp_tracks[class_index][unconfirmed_tracks[0]])
-            #     print('aa',aa)
+
 
             # 对于已经确认的使用cos距离匹配
             matches_a, unmatched_tracks_a, unmatched_detections_a = linear_assignment.matching_cascade(
@@ -187,44 +189,6 @@ class Tracker:
             for i in range(0, len(temp_unmatched_detections)):
                 original_detection_idx = detections.index(temp_detections[class_index][temp_unmatched_detections[i]])
                 unmatched_detections.append(original_detection_idx)
-
-        # confirmed_tracks = [
-        #     i for i, t in enumerate(self.tracks) if t.is_confirmed()]
-        # unconfirmed_tracks = [
-        #     i for i, t in enumerate(self.tracks) if not t.is_confirmed()]
-        #
-        # # Associate confirmed tracks using appearance features.
-        # matches_a, unmatched_tracks_a, unmatched_detections_a = linear_assignment.matching_cascade(
-        #         gated_metric, self.metric.matching_threshold, self.max_age,
-        #         self.tracks, detections, confirmed_tracks)
-        #
-        # # Associate remaining tracks together with unconfirmed tracks using IOU.
-        # iou_track_candidates = unconfirmed_tracks + [
-        #     k for k in unmatched_tracks_a if
-        #     self.tracks[k].time_since_update == 1]
-        # unmatched_tracks_a = [
-        #     k for k in unmatched_tracks_a if
-        #     self.tracks[k].time_since_update != 1]
-        # matches_b, unmatched_tracks_b, unmatched_detections_b = linear_assignment.min_cost_matching(
-        #         iou_matching.iou_cost, self.max_iou_distance, self.tracks,
-        #         detections, iou_track_candidates, unmatched_detections_a)
-        #
-        # temp_matches = matches_a + matches_b
-        # matches=[]
-        # unmatched_tracks_c=[]
-        # unmatched_detections_c=[]
-        #
-        # # 确保是同一类
-        # for track_idx, detection_idx in temp_matches:
-        #     if self.tracks[track_idx].classIndex == detections[detection_idx].classIndex:
-        #         matches.append(tuple([track_idx,detection_idx]))
-        #     else:
-        #         unmatched_tracks_c.append(track_idx)
-        #         unmatched_detections_c.append(detection_idx)
-        #         print('wrong with:',self.tracks[track_idx].classIndex,detections[detection_idx].classIndex)
-        #
-        # unmatched_tracks = list(set(unmatched_tracks_a + unmatched_tracks_b+unmatched_tracks_c))
-        # unmatched_detections=list(set(unmatched_detections_a + unmatched_detections_b+unmatched_detections_c))
 
         return matches, unmatched_tracks, unmatched_detections
 

@@ -54,7 +54,10 @@ def min_cost_matching(
 
     cost_matrix = distance_metric(
         tracks, detections, track_indices, detection_indices)
-    cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
+
+    # cost_matrix[cost_matrix > max_distance] = max_distance + 1e-5
+    cost_matrix[cost_matrix > max_distance] = INFTY_COST
+
     indices = linear_assignment(cost_matrix)
 
     matches, unmatched_tracks, unmatched_detections = [], [], []
@@ -143,12 +146,13 @@ def matching_cascade(
 
 def gate_cost_matrix(
         kf, cost_matrix, tracks, detections, track_indices, detection_indices,
-        gated_cost=INFTY_COST, only_position=False):
+        gated_cost=INFTY_COST, cos_dis_rate=0.9, only_position=False):
     """Invalidate infeasible entries in cost matrix based on the state
     distributions obtained by Kalman filtering.
 
     Parameters
     ----------
+    cos_dis_rate
     kf : The Kalman filter.
     cost_matrix : ndarray
         The NxM dimensional cost matrix, where N is the number of track indices
@@ -184,7 +188,13 @@ def gate_cost_matrix(
         [detections[i].to_xyah() for i in detection_indices])
     for row, track_idx in enumerate(track_indices):
         track = tracks[track_idx]
+
+        # 计算马氏距离平方
         gating_distance = kf.gating_distance(
             track.mean, track.covariance, measurements, only_position)
+
+        # 加权计算
+        cost_matrix[row]=cost_matrix[row]*cos_dis_rate+(1-cos_dis_rate)*gating_distance
+
         cost_matrix[row, gating_distance > gating_threshold] = gated_cost
     return cost_matrix
