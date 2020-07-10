@@ -63,7 +63,7 @@ class Track:
 
     """
 
-    def __init__(self, mean, covariance, track_id, n_init, max_age, classIndex, objectIndex,feature=None):
+    def __init__(self, mean, covariance, track_id, n_init, max_age, classIndex, objectIndex,feature=None,time_cross=10):
         self.mean = mean
         self.covariance = covariance
         self.track_id = track_id
@@ -80,6 +80,11 @@ class Track:
 
         self._n_init = n_init
         self._max_age = max_age
+
+        #保存4种速度的加速度
+        self.acceleration=[[],[],[],[]]
+        #加速度保留帧数
+        self.time_cross=time_cross
 
     def to_tlwh(self):
         """Get current position in bounding box format `(top left x, top left y,
@@ -110,6 +115,7 @@ class Track:
         ret[2:] = ret[:2] + ret[2:]
         return ret
 
+    # 预测
     def predict(self, kf):
         """Propagate the state distribution to the current time step using a
         Kalman filter prediction step.
@@ -120,10 +126,11 @@ class Track:
             The Kalman filter.
 
         """
-        self.mean, self.covariance = kf.predict(self.mean, self.covariance)
+        self.mean, self.covariance = kf.predict(self.mean, self.covariance,self.acceleration)
         self.age += 1
         self.time_since_update += 1
 
+    # 更新mean covariance acceleration以及track状态
     def update(self, kf, detection):
         """Perform Kalman filter measurement update step and update the feature
         cache.
@@ -136,8 +143,12 @@ class Track:
             The associated detection.
 
         """
-        self.mean, self.covariance = kf.update(
-            self.mean, self.covariance, detection.to_xyah())
+        self.mean, self.covariance,self.acceleration = kf.update(
+            self.mean,
+            self.covariance, detection.to_xyah(),
+            self.acceleration,
+            time_cross=self.time_cross
+        )
         self.features.append(detection.feature)
 
         self.hits += 1

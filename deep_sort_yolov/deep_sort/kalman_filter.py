@@ -85,25 +85,9 @@ class KalmanFilter(object):
         covariance = np.diag(np.square(std))
         return mean, covariance
 
-    def predict(self, mean, covariance):
-        """Run Kalman filter prediction step.
+    # 预测下一个时刻运动状态 根据之前的速度求下一个时刻速度
+    def predict(self, mean, covariance, acceleration):
 
-        Parameters
-        ----------
-        mean : ndarray
-            The 8 dimensional mean vector of the object state at the previous
-            time step.
-        covariance : ndarray
-            The 8x8 dimensional covariance matrix of the object state at the
-            previous time step.
-
-        Returns
-        -------
-        (ndarray, ndarray)
-            Returns the mean vector and covariance matrix of the predicted
-            state. Unobserved velocities are initialized to 0 mean.
-
-        """
         std_pos = [
             self._std_weight_position * mean[3],
             self._std_weight_position * mean[3],
@@ -117,6 +101,13 @@ class KalmanFilter(object):
         motion_cov = np.diag(np.square(np.r_[std_pos, std_vel]))
 
         mean = np.dot(self._motion_mat, mean)
+
+        if len(acceleration[0])>0:
+            for i in range(0,4):
+                predict_acc=np.mean(acceleration[i])
+                mean[i+4]+=predict_acc
+
+
         covariance = np.linalg.multi_dot((
             self._motion_mat, covariance, self._motion_mat.T)) + motion_cov
 
@@ -151,7 +142,8 @@ class KalmanFilter(object):
             self._update_mat, covariance, self._update_mat.T))
         return mean, covariance + innovation_cov
 
-    def update(self, mean, covariance, measurement):
+    #acceleration保存之前4个纬度的加速度 time_cross为保留加速度帧数
+    def update(self, mean, covariance, measurement,acceleration,time_cross=10):
         """Run Kalman filter correction step.
 
         Parameters
@@ -181,10 +173,18 @@ class KalmanFilter(object):
         innovation = measurement - projected_mean
 
         new_mean = mean + np.dot(innovation, kalman_gain.T)
+
+        #更新加速度
+        now_acceleration=(new_mean-mean)[4:8]
+        for i in range(0,4):
+            acceleration[i].append(now_acceleration[i])
+            acceleration[i] = acceleration[i][-time_cross:]
+
         new_covariance = covariance - np.linalg.multi_dot((
             kalman_gain, projected_cov, kalman_gain.T))
-        return new_mean, new_covariance
+        return new_mean, new_covariance,acceleration
 
+    #计算马氏距离平方
     def gating_distance(self, mean, covariance, measurements,
                         only_position=False):
         """Compute gating distance between state distribution and measurements.

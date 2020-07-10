@@ -37,6 +37,9 @@ class YOLO(object):
         self.anchors = self._get_anchors()
         self.sess = K.get_session()
         self.boxes, self.scores, self.classes = self.generate()
+        self.chosen_classes = ['person', 'bicycle', 'car', 'motorbike', 'bus', 'truck', 'fire hydrant', 'parking meter',
+                               'bench', 'cat', 'dog', 'backpack', 'umbrella', 'handbag',
+                               'tie', 'suitcase', 'pottedplant', 'chair']
 
     #---------------------------------------------------#
     #   获得所有的分类
@@ -127,12 +130,12 @@ class YOLO(object):
 
         return_boxs = []
         return_scores = []
-        small_pic=[]
+
         return_classIndex = []
         for i, c in list(enumerate(out_classes)):
             # 在使用coco时排除红绿灯
-            if c == 9:
-                continue
+            # if c == 9:
+            #     continue
 
             box = out_boxes[i]
             score = out_scores[i]
@@ -143,6 +146,9 @@ class YOLO(object):
                 continue
             if c == 2 and score < 0.6:
                 # print(c, score)
+                continue
+
+            if self.class_names[c] not in self.chosen_classes:
                 continue
 
 

@@ -37,6 +37,7 @@ class YOLO_BDD(object):
         self.anchors = self._get_anchors()
         self.sess = K.get_session()
         self.boxes, self.scores, self.classes = self.generate()
+        self.chosen_classes = ['traffic sign', 'traffic light']
 
     #---------------------------------------------------#
     #   获得所有的分类
@@ -125,15 +126,16 @@ class YOLO_BDD(object):
 
         return_boxs = []
         return_scores = []
-        small_pic=[]
         return_classIndex = []
         for i, c in list(enumerate(out_classes)):
             
             box = out_boxes[i]
             score = out_scores[i]
-            # 在使用bdd时 只识别红绿灯和标牌      
-            if c != 8 and c != 9:
+            # 在使用bdd时 只识别红绿灯和标牌
+            if self.class_names[c] not in self.chosen_classes:
                 continue
+            # if c != 8 and c != 9:
+            #     continue
 #             if c == 2 and score < 0.65:
 #                 continue
 #            #在使用coco时红绿灯准确度要大于0.75

@@ -81,9 +81,8 @@ def main():
         if frameIndex % 2 == 0:
             # coco预测
 
-            boxs = yolo.detect_image(image)[0]
-            confidence = yolo.detect_image(image)[1]
-            classIndexList = yolo.detect_image(image)[2]
+            boxs,confidence,classIndexList = yolo.detect_image(image)
+
             print('coco', len(confidence), len(boxs), len(classIndexList))
             # 特征获取
             features = encoder(frame, boxs)
